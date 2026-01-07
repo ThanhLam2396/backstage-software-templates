@@ -48,44 +48,54 @@ jobs:
         with:
           message: 'Updates values.yaml with commit ${{ '${{needs.ci.outputs.commit_id}}' }}'
 
-      - name: Install argocd
+      - name: Install ArgoCD CLI
         shell: bash
         run: |
-          curl -ksSL -o argocd https://argocd-server.argocd/download/argocd-linux-amd64
-          chmod +x argocd
-          sudo mv ./argocd /usr/local/bin/argocd
+          mkdir -p $HOME/bin
+          curl -sSL https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64 -o $HOME/bin/argocd
+          chmod +x $HOME/bin/argocd
+          echo "$HOME/bin" >> $GITHUB_PATH
+          argocd version --client
 
       - name: ArgoCD login
-        uses: clowdhaus/argo-cd-action@main
-        env:
-          GITHUB_TOKEN: ${{ '${{ secrets.GITHUB_TOKEN }}' }}  # Escape đúng cách cho Backstage
-        with:
-          command: login
-          options: argocd-server.argocd --insecure --grpc-web --username admin --password ${{ '${{ secrets.ARGOCD_PASSWORD }}' }}
+        shell: bash
+        run: |
+          argocd login argocd-server.argocd \
+            --insecure \
+            --grpc-web \
+            --username admin \
+            --password ${{ '${{ secrets.ARGOCD_PASSWORD }}' }}
 
-      - name: Ensure argocd repo
-        uses: clowdhaus/argo-cd-action@main
-        with:
-          command: repo add
-          options: https://github.com/thanhlam2396-org/${{ values.app_name }}.git --upsert
+      - name: Ensure argocd repo and app
+        shell: bash
+        run: |
+          repo="https://github.com/thanhlam2396-org/${{ values.app_name }}.git"
 
-      - name: Create or update ArgoCD app (idempotent)
-        uses: clowdhaus/argo-cd-action@main
-        with:
-          command: app create
-          options: ${{ values.app_name }} \
-            --repo https://github.com/thanhlam2396-org/${{ values.app_name }}.git \
-            --path charts/${{ values.app_name }} \
-            --dest-namespace ${{ values.app_env }} \
-            --dest-server https://kubernetes.default.svc \
-            --values values-${{ values.app_env }}.yaml \
-            --revision master \
-            --sync-policy manual \
-            --sync-option CreateNamespace=true \
-            --upsert
+          argocd repo list | grep -q "$repo" || argocd repo add "$repo" --upsert
 
-      - name: Sync and wait
-        uses: clowdhaus/argo-cd-action@main
-        with:
-          command: app sync
-          options: ${{ values.app_name }} --wait --timeout 180
+          if argocd app get ${{ values.app_name }} >/dev/null 2>&1; then
+            argocd app set ${{ values.app_name }} \
+              --repo "$repo" \
+              --path charts/${{ values.app_name }} \
+              --dest-namespace ${{ values.app_env }} \
+              --dest-server https://kubernetes.default.svc \
+              --revision master \
+              --sync-policy manual \
+              --sync-option CreateNamespace=true
+          else
+            argocd app create ${{ values.app_name }} \
+              --repo "$repo" \
+              --path charts/${{ values.app_name }} \
+              --dest-namespace ${{ values.app_env }} \
+              --dest-server https://kubernetes.default.svc \
+              --revision master \
+              --sync-policy manual \
+              --sync-option CreateNamespace=true
+          fi
+          argocd app set ${{ values.app_name }} --helm-set image.tag=${{ needs.ci.outputs.commit_id }}
+
+      - name: ArgoCD app sync
+        shell: bash
+        run: |
+          argocd app sync ${{ values.app_name }}
+          argocd app wait ${{ values.app_name }} --timeout 300
