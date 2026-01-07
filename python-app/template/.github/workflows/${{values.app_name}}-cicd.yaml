@@ -38,12 +38,10 @@ jobs:
 
       - uses: actions/checkout@v3
       - name: Install yq
-        uses: chrisdickinson/setup-yq@latest
       - name: Modify values file
-        shell: bash
-        run: |
-          echo ${{ '${{needs.ci.outputs.commit_id}}' }}
-          yq -Yi '.image.tag = "${{'${{needs.ci.outputs.commit_id}}' }}"' charts/${{values.app_name}}/values-${{values.app_env}}.yaml
+        uses: mikefarah/yq@master
+        with:
+          cmd: yq -i '.image.tag = "${{'${{needs.ci.outputs.commit_id}}' }}"' charts/${{values.app_name}}/values-${{values.app_env}}.yaml
 
       - name: Commit changes
         uses: EndBug/add-and-commit@v9
