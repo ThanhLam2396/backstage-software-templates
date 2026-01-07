@@ -37,7 +37,6 @@ jobs:
     steps:
 
       - uses: actions/checkout@v3
-      - name: Install yq
       - name: Modify values file
         uses: mikefarah/yq@master
         with:
