@@ -52,60 +52,60 @@ jobs:
         input:
           shell: bash
           run: |
-          mkdir -p $HOME/bin
-          curl -sSL https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64 -o $HOME/bin/argocd
+            mkdir -p $HOME/bin
+            curl -sSL https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64 -o $HOME/bin/argocd
 
-          chmod +x $HOME/bin/argocd
+            chmod +x $HOME/bin/argocd
 
-          echo "$HOME/bin" >> $GITHUB_PATH
-          ls -l $HOME/bin/argocd
+            echo "$HOME/bin" >> $GITHUB_PATH
+            ls -l $HOME/bin/argocd
 
       - name: ArgoCD Login
         action: debug:log
         input:
           shell: bash
           run: |
-          argocd login argocd-server.argocd \
-            --insecure \
-            --grpc-web \
-            --username admin \
-            --password ${{ '${{ secrets.ARGOCD_PASSWORD }}' }}
+            argocd login argocd-server.argocd \
+              --insecure \
+              --grpc-web \
+              --username admin \
+              --password ${{ '${{ secrets.ARGOCD_PASSWORD }}' }}
 
       - name: Ensure ArgoCD Repo and Application
         action: debug:log
         input:
           shell: bash
           run: |
-          repo="https://github.com/thanhlam2396-org/${{ values.app_name }}.git"
+            repo="https://github.com/thanhlam2396-org/${{ values.app_name }}.git"
 
-          argocd repo list | grep -q "$repo" || argocd repo add "$repo" --upsert
+            argocd repo list | grep -q "$repo" || argocd repo add "$repo" --upsert
 
-          if argocd app get ${{ values.app_name }} >/dev/null 2>&1; then
-            argocd app set ${{ values.app_name }} \
-              --repo "$repo" \
-              --path charts/${{ values.app_name }} \
-              --dest-namespace ${{ values.app_env }} \
-              --dest-server https://kubernetes.default.svc \
-              --revision main \
-              --sync-policy manual \
-              --sync-option CreateNamespace=true
-          else
-            argocd app create ${{ values.app_name }} \
-              --repo "$repo" \
-              --path charts/${{ values.app_name }} \
-              --dest-namespace ${{ values.app_env }} \
-              --dest-server https://kubernetes.default.svc \
-              --revision main \
-              --sync-policy manual \
-              --sync-option CreateNamespace=true
-          fi
+            if argocd app get ${{ values.app_name }} >/dev/null 2>&1; then
+              argocd app set ${{ values.app_name }} \
+                --repo "$repo" \
+                --path charts/${{ values.app_name }} \
+                --dest-namespace ${{ values.app_env }} \
+                --dest-server https://kubernetes.default.svc \
+                --revision main \
+                --sync-policy manual \
+                --sync-option CreateNamespace=true
+            else
+              argocd app create ${{ values.app_name }} \
+                --repo "$repo" \
+                --path charts/${{ values.app_name }} \
+                --dest-namespace ${{ values.app_env }} \
+                --dest-server https://kubernetes.default.svc \
+                --revision main \
+                --sync-policy manual \
+                --sync-option CreateNamespace=true
+            fi
 
-          argocd app set ${{ values.app_name }} --helm-set image.tag=${{ steps.modify-values.outputs.commit_id }}
+            argocd app set ${{ values.app_name }} --helm-set image.tag=${{ steps.modify-values.outputs.commit_id }}
 
       - name: ArgoCD Sync and Wait
         action: debug:log
         input:
           shell: bash
           run: |
-          argocd app sync ${{ values.app_name }}
-          argocd app wait ${{ values.app_name }} --timeout 180
+            argocd app sync ${{ values.app_name }}
+            argocd app wait ${{ values.app_name }} --timeout 180
