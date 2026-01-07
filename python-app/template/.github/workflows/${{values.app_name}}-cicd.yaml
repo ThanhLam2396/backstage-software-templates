@@ -37,14 +37,12 @@ jobs:
     steps:
 
       - uses: actions/checkout@v3
-
+      - name: Install yq
+        uses: mikefarah/yq-action@v4
       - name: Modify values file
         shell: bash
         run: |
           echo ${{ '${{needs.ci.outputs.commit_id}}' }}
-          curl -sSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/local/bin/yq
-          chmod x /usr/local/bin/yq
-          yq --version
           yq -Yi '.image.tag = "${{'${{needs.ci.outputs.commit_id}}' }}"' charts/${{values.app_name}}/values-${{values.app_env}}.yaml
 
       - name: Commit changes
