@@ -1,4 +1,4 @@
-name: ${{values.app_name}}-cicd
+name: ${{ values.app_name }}-cicd
 
 on:
   push:
@@ -11,101 +11,88 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     steps:
-
       - name: Shorten commit id
-        shell: bash
-        run: |
-          echo "COMMIT_ID=${GITHUB_SHA::6}" >> "$GITHUB_ENV"
-      -
-        name: Login to Docker Hub
+        run: echo "COMMIT_ID=${GITHUB_SHA::6}" >> "$GITHUB_ENV"
+
+      - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: ${{ '${{ secrets.DOCKERHUB_USERNAME }}' }}
-          password: ${{ '${{ secrets.DOCKERHUB_TOKEN }}' }}
-      -
-        name: Build and push
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
         uses: docker/build-push-action@v6
         with:
           push: true
-          tags: thanhlam2396/${{values.app_name}}:${{ '${{ env.COMMIT_ID }}' }}
+          tags: thanhlam2396/${{ values.app_name }}:${{ env.COMMIT_ID }}
+
     outputs:
-      commit_id: ${{ '${{ env.COMMIT_ID }}' }}
+      commit_id: ${{ env.COMMIT_ID }}
 
   cd:
     needs: ci
     runs-on: self-hosted
     steps:
+      - uses: actions/checkout@v4
 
-      - uses: actions/checkout@v3
       - name: Modify values file
+        id: modify-values
         uses: mikefarah/yq@master
         with:
-          cmd: yq -i '.image.tag = "${{'${{needs.ci.outputs.commit_id}}' }}"' charts/${{values.app_name}}/values-${{values.app_env}}.yaml
+          cmd: yq -i '.image.tag = "${{ needs.ci.outputs.commit_id }}"' charts/${{ values.app_name }}/values-${{ values.app_env }}.yaml
 
-      - name: Commit changes
+      - name: Commit and push changes
         uses: EndBug/add-and-commit@v9
         with:
-          message: 'Updates values.yaml with commit ${{ '${{needs.ci.outputs.commit_id}}' }}'
+          add: 'charts/${{ values.app_name }}/values-${{ values.app_env }}.yaml'
+          message: 'ci: update image.tag to ${{ needs.ci.outputs.commit_id }}'
+          push: true
 
       - name: Install ArgoCD CLI
-        action: debug:log
-        input:
-          shell: bash
-          run: |
-            mkdir -p $HOME/bin
-            curl -sSL https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64 -o $HOME/bin/argocd
-
-            chmod +x $HOME/bin/argocd
-
-            echo "$HOME/bin" >> $GITHUB_PATH
-            ls -l $HOME/bin/argocd
+        run: |
+          mkdir -p $HOME/bin
+          curl -sSL https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64 -o $HOME/bin/argocd
+          chmod +x $HOME/bin/argocd
+          echo "$HOME/bin" >> $GITHUB_PATH
 
       - name: ArgoCD Login
-        action: debug:log
-        input:
-          shell: bash
-          run: |
-            argocd login argocd-server.argocd \
-              --insecure \
-              --grpc-web \
-              --username admin \
-              --password ${{ '${{ secrets.ARGOCD_PASSWORD }}' }}
+        run: |
+          argocd login argocd-server.argocd \
+            --insecure \
+            --grpc-web \
+            --username admin \
+            --password ${{ secrets.ARGOCD_PASSWORD }}
 
-      - name: Ensure ArgoCD Repo and Application
-        action: debug:log
-        input:
-          shell: bash
-          run: |
-            repo="https://github.com/thanhlam2396-org/${{ values.app_name }}.git"
+      - name: Ensure ArgoCD Application
+        run: |
+          repo="https://github.com/thanhlam2396-org/${{ values.app_name }}.git"
 
-            argocd repo list | grep -q "$repo" || argocd repo add "$repo" --upsert
+          argocd repo list | grep -q "$repo" || argocd repo add "$repo" --upsert
 
-            if argocd app get ${{ values.app_name }} >/dev/null 2>&1; then
-              argocd app set ${{ values.app_name }} \
-                --repo "$repo" \
-                --path charts/${{ values.app_name }} \
-                --dest-namespace ${{ values.app_env }} \
-                --dest-server https://kubernetes.default.svc \
-                --revision main \
-                --sync-policy manual \
-                --sync-option CreateNamespace=true
-            else
-              argocd app create ${{ values.app_name }} \
-                --repo "$repo" \
-                --path charts/${{ values.app_name }} \
-                --dest-namespace ${{ values.app_env }} \
-                --dest-server https://kubernetes.default.svc \
-                --revision main \
-                --sync-policy manual \
-                --sync-option CreateNamespace=true
-            fi
+          if argocd app get ${{ values.app_name }} >/dev/null 2>&1; then
+            argocd app set ${{ values.app_name }} \
+              --repo "$repo" \
+              --path charts/${{ values.app_name }} \
+              --dest-namespace ${{ values.app_env }} \
+              --dest-server https://kubernetes.default.svc \
+              --revision main \
+              --sync-policy manual \
+              --sync-option CreateNamespace=true
+          else
+            argocd app create ${{ values.app_name }} \
+              --repo "$repo" \
+              --path charts/${{ values.app_name }} \
+              --dest-namespace ${{ values.app_env }} \
+              --dest-server https://kubernetes.default.svc \
+              --revision main \
+              --sync-policy manual \
+              --sync-option CreateNamespace=true
+          fi
 
-            argocd app set ${{ values.app_name }} --helm-set image.tag=${{ steps.modify-values.outputs.commit_id }}
+          # Override image tag ngay lập tức trong ArgoCD (đảm bảo deploy đúng version mới)
+          argocd app set ${{ values.app_name }} --helm-set image.tag=${{ needs.ci.outputs.commit_id }}
 
       - name: ArgoCD Sync and Wait
-        action: debug:log
-        input:
-          shell: bash
-          run: |
-            argocd app sync ${{ values.app_name }}
-            argocd app wait ${{ values.app_name }} --timeout 180
+        run: |
+          argocd app sync ${{ values.app_name }}
+          argocd app wait ${{ values.app_name }} --timeout 300
