@@ -17,17 +17,17 @@ jobs:
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          username: ${{ '${{ secrets.DOCKERHUB_USERNAME }}' }}
+          password: ${{ '${{ secrets.DOCKERHUB_TOKEN }}' }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           push: true
-          tags: thanhlam2396/${{ values.app_name }}:${{ env.COMMIT_ID }}
+          tags: thanhlam2396/${{values.app_name}}:${{ '${{ env.COMMIT_ID }}' }}
 
     outputs:
-      commit_id: ${{ env.COMMIT_ID }}
+      commit_id: ${{ '${{ env.COMMIT_ID }}' }}
 
   cd:
     needs: ci
@@ -39,13 +39,13 @@ jobs:
         id: modify-values
         uses: mikefarah/yq@master
         with:
-          cmd: yq -i '.image.tag = "${{ needs.ci.outputs.commit_id }}"' charts/${{ values.app_name }}/values-${{ values.app_env }}.yaml
+          cmd: yq -i '.image.tag = "${{ '${{ needs.ci.outputs.commit_id }}' }}"' charts/${{ values.app_name }}/values-${{ values.app_env }}.yaml
 
       - name: Commit and push changes
         uses: EndBug/add-and-commit@v9
         with:
           add: 'charts/${{ values.app_name }}/values-${{ values.app_env }}.yaml'
-          message: 'ci: update image.tag to ${{ needs.ci.outputs.commit_id }}'
+          message: 'ci: update image.tag to ${{ '${{ needs.ci.outputs.commit_id }}' }}'
           push: true
 
       - name: Install ArgoCD CLI
@@ -61,7 +61,7 @@ jobs:
             --insecure \
             --grpc-web \
             --username admin \
-            --password ${{ secrets.ARGOCD_PASSWORD }}
+            --password ${{ '${{ secrets.ARGOCD_PASSWORD }}' }}
 
       - name: Ensure ArgoCD Application
         run: |
@@ -90,7 +90,7 @@ jobs:
           fi
 
           # Override image tag ngay lập tức trong ArgoCD (đảm bảo deploy đúng version mới)
-          argocd app set ${{ values.app_name }} --helm-set image.tag=${{ needs.ci.outputs.commit_id }}
+          argocd app set ${{ values.app_name }} --helm-set image.tag=${{ '${{ needs.ci.outputs.commit_id }}' }}
 
       - name: ArgoCD Sync and Wait
         run: |
